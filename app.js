@@ -2,6 +2,7 @@
 
 const express = require("express");
 const bodyParser = require("body-parser");
+const mongoose = require("mongoose");
 const ejs = require("ejs");
 const _ = require("lodash");
 
@@ -14,17 +15,44 @@ const contactContent =
 const blogCompose =
   "This is your canvas — start with a title, then let your thoughts flow. Whether it’s a story, an idea, or a personal experience, your post begins here. Create with confidence and share what matters most to you.";
 const app = express();
-const posts = [];
 
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
+mongoose.connect(
+  "mongodb+srv://admin-blog-suraj:Test123@cluster0.6v2be78.mongodb.net/postDB"
+);
+
+const postSchema = new mongoose.Schema({
+  name: String,
+  content: String,
+});
+const Post = mongoose.model("Post", postSchema);
+
+const post1 = new Post({
+  name: "Home",
+  content: homeStartingContent,
+});
+const defaultPosts = [post1];
+
+// Post.insertMany(defaultPosts).then((foundPosts) => {
+//   console.log(`Items inserted into DB, ${foundPosts} `);
+// });
 
 app.get("/", (req, res) => {
-  res.render("home", {
-    homeStartingContent: homeStartingContent,
-    posts: posts,
+  Post.find({}).then((foundPosts) => {
+    if (foundPosts.length === 0) {
+      Post.insertMany(defaultPosts).then(() => {
+        console.log(`Items inserted into DB!`);
+        res.redirect("/");
+      });
+    } else {
+      res.render("home", {
+        homeStartingContent: homeStartingContent,
+        posts: foundPosts,
+      });
+    }
   });
 });
 
@@ -38,25 +66,30 @@ app.get("/compose", (req, res) => {
   res.render("compose");
 });
 app.post("/compose", (req, res) => {
-  let post = {
-    postTitle: req.body.postTitle,
-    postBody: req.body.postBody,
-  };
-  posts.push(post);
-  res.redirect("/");
+  const post = new Post({
+    name: req.body.postTitle,
+    content: req.body.postBody,
+  });
+
+  post
+    .save()
+    .then(() => {
+      res.redirect("/");
+    })
+    .catch((err) => {
+      console.log(err);
+      res.send("Failed to save post.");
+    });
 });
-app.get("/post/:topic", (req, res) => {
-  const requestedTitle = _.lowerCase(req.params.topic);
-  posts.forEach(function (post) {
-    const storedTitle = _.lowerCase(post.postTitle);
-    if (storedTitle === requestedTitle) {
-      res.render("post", {
-        postTitle: post.postTitle,
-        postBody: post.postBody,
-      });
-    }
+app.get("/post/:postId", (req, res) => {
+  const requestedPostId = req.params.postId;
+
+  Post.findOne({ _id: requestedPostId }).then((post) => {
+    res.render("post", { postTitle: post.name, postBody: post.content });
   });
 });
-app.listen(3000, function () {
-  console.log("Server started on port 3000");
+
+const port = process.env.PORT || 3000;
+app.listen(port, function () {
+  console.log(`Server started on port: ${port}`);
 });
